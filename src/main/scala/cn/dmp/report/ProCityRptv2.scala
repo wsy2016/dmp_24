@@ -1,24 +1,25 @@
 package cn.dmp.report
 
-import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.spark.sql.{DataFrame, SQLContext}
+import java.util.Properties
+
+import cn.dmp.utils.ConfUtils
+import org.apache.spark.sql.{SQLContext, SaveMode}
 import org.apache.spark.{SparkConf, SparkContext}
 
-object ProCityRpt {
+object ProCityRptv2 {
   def main(args: Array[String]): Unit = {
-    if (args.length != 2) {
+    if (args.length != 1) {
       println(
         """
           |cn.dmp.report.ProCityRpt
           |参数：
           | logInputPath
-          | resultOutputPath
         """.stripMargin
       )
       sys.exit(1)
     }
 
-    val Array(logInputPath, resultOutputPath) = args
+    val Array(logInputPath) = args
 
     val sparkConf = new SparkConf()
       .setAppName(this.getClass.getSimpleName)
@@ -30,14 +31,14 @@ object ProCityRpt {
     val df = sQLContext.read.parquet(logInputPath)
     df.registerTempTable("log")
     var rs = sQLContext.sql("select provincename, cityname, count(*) ct from log group by provincename, cityname order by ct desc")
-    val hadoopConfiguration = sparkContext.hadoopConfiguration
-    val fileSystem = FileSystem.get(hadoopConfiguration)
-    val path = new Path(resultOutputPath)
-    if (fileSystem.exists(path)){
-      fileSystem.delete(path)
-    }
-    rs.coalesce(1).write.json(resultOutputPath)
-
+    val properties = new Properties()
+    properties.setProperty("user", ConfUtils.getString("jdbc.user"))
+    properties.setProperty("password", ConfUtils.getString("jdbc.password"))
+    properties.setProperty("driver", "com.mysql.jdbc.Driver")
+    val url = ConfUtils.getString("jdbc.url")
+    val tableName = ConfUtils.getString("jdbc.tableName")
+    rs.coalesce(1).write.mode(SaveMode.Overwrite) jdbc(url, tableName, properties)
     sparkContext.stop()
   }
+
 }
